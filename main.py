@@ -5,7 +5,7 @@ import time
 import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseUpload
 
 SCOPES = [
     'https://www.googleapis.com/auth/chat.messages',
@@ -13,8 +13,8 @@ SCOPES = [
     'https://www.googleapis.com/auth/chat.memberships.readonly'
 ]
 
-def authenticate_google_chat():
-    token_info = json.loads(os.environ['GCP_TOKEN'])
+def authenticate_google_chat(env_var_name):
+    token_info = json.loads(os.environ[env_var_name])
     creds = Credentials.from_authorized_user_info(token_info, SCOPES)
     service = build('chat', 'v1', credentials=creds)
     return service, creds
@@ -111,8 +111,8 @@ def save_state(state, target_space):
     with open(state_file, 'w', encoding='utf-8') as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
-def sync_new_messages(service, creds, source_space, target_space):
-    messages = get_all_messages(service, source_space)
+def sync_new_messages(source_service, source_creds, target_service, target_creds, source_space, target_space):
+    messages = get_all_messages(source_service, source_space)
     
     if not messages:
         print(f"לא נמצאו הודעות במרחב המקור {source_space}.")
@@ -144,7 +144,6 @@ def sync_new_messages(service, creds, source_space, target_space):
         return
 
     print(f"נמצאו {len(new_messages)} הודעות חדשות. מתחיל העתקה...")
-
     dynamic_known_users = {}
 
     for original_msg in new_messages:
@@ -207,7 +206,7 @@ def sync_new_messages(service, creds, source_space, target_space):
                         try:
                             user_id = raw_name.split('/')[-1]
                             member_resource = f"{source_space}/members/{user_id}"
-                            member_info = service.spaces().members().get(name=member_resource).execute()
+                            member_info = source_service.spaces().members().get(name=member_resource).execute()
                             user_data = member_info.get('member', {})
                             sender_name = user_data.get('displayName')
                             if not sender_name:
@@ -251,11 +250,11 @@ def sync_new_messages(service, creds, source_space, target_space):
                 if 'thread' in msg_body:
                     api_kwargs['messageReplyOption'] = 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD'
                 
-                created_message = service.spaces().messages().create(**api_kwargs).execute()
+                created_message = target_service.spaces().messages().create(**api_kwargs).execute()
                 print(" > הודעת טקסט הועתקה בהצלחה.")
             else:
                 for i, attachment_info in enumerate(attachments):
-                    file_stream, mime_type = download_attachment(attachment_info, service, creds)
+                    file_stream, mime_type = download_attachment(attachment_info, source_service, source_creds)
                     
                     current_body = msg_body.copy() if i == 0 else {'text': f"*(קובץ נוסף מ-{sender_name})*"}
                     if 'thread' in msg_body:
@@ -273,16 +272,14 @@ def sync_new_messages(service, creds, source_space, target_space):
                     if file_stream:
                         file_name = attachment_info.get('contentName', 'attachment_file')
                         upload_res = None
-                        
                         last_error_msg = "שגיאה לא ידועה"
                         
-                        # ההשהיה המעריכית המעודכנת ל-429 (הגדלנו ל-5 ניסיונות)
                         for attempt in range(5): 
                             try:
                                 file_stream.seek(0)
                                 media_upload = MediaIoBaseUpload(file_stream, mimetype=mime_type, resumable=True)
                                 
-                                upload_res = service.media().upload(
+                                upload_res = target_service.media().upload(
                                     parent=target_space,
                                     body={'filename': file_name},
                                     media_body=media_upload
@@ -290,9 +287,8 @@ def sync_new_messages(service, creds, source_space, target_space):
                                 break 
                                 
                             except Exception as e:
-                                last_error_msg = str(e) # שמירת השגיאה להדפסה בצ'אט במידת הצורך
+                                last_error_msg = str(e)
                                 if '429' in str(e) and attempt < 4:
-                                    # מנגנון השהיה מעריכית: 5 -> 10 -> 20 -> 40 שניות
                                     wait_time = 5 * (2 ** attempt)
                                     print(f" > עומס כתיבה (429). ממתין {wait_time} שניות ומנסה שוב (ניסיון {attempt + 1}/5)...")
                                     time.sleep(wait_time)
@@ -305,22 +301,21 @@ def sync_new_messages(service, creds, source_space, target_space):
                                 current_body['attachment'] = [{'attachmentDataRef': attachment_data_ref}]
                             
                             try:
-                                msg_res = service.spaces().messages().create(**api_kwargs).execute()
+                                msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
                                 print(f" > קובץ ({file_name}) טופל בהצלחה.")
                             except Exception as e:
                                 print(f" > שגיאה בשליחת ההודעה: {e}")
                         else:
-                            # הזרקת השגיאה המדויקת היישר אל תוך טקסט ההודעה בצ'אט
                             current_body['text'] += f"\n*[מערכת: קובץ ({file_name}) לא צורף. סיבה: {last_error_msg}]*"
                             try:
-                                msg_res = service.spaces().messages().create(**api_kwargs).execute()
+                                msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
                             except Exception as e:
                                 print(f" > שגיאה בשליחת הודעת השגיאה: {e}")
                     else:
                         if not drive_id:
                             current_body['text'] += "\n*[מערכת: צורף קובץ או תמונה שלא ניתן היה להוריד ממרחב המקור]*"
                         try:
-                            msg_res = service.spaces().messages().create(**api_kwargs).execute()
+                            msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
                         except Exception as e:
                             print(f" > שגיאה בשליחת הודעת שגיאת הורדה: {e}")
                         
@@ -346,12 +341,13 @@ def sync_new_messages(service, creds, source_space, target_space):
 
 if __name__ == '__main__':
     SPACE_PAIRS = [
-        ('spaces/AAQArWIpnWI', 'spaces/AAQAq5S0W9Q'),
-        ('spaces/AAQAKJsiBR0', 'spaces/AAQA89OFw6A')
+        ('spaces/מזהה_המקור', 'spaces/מזהה_היעד') # אל תשכח לשנות למזהים שלך
     ]
     
-    chat_service, creds = authenticate_google_chat()
+    # אימות כפול
+    source_service, source_creds = authenticate_google_chat('GCP_TOKEN_SOURCE')
+    target_service, target_creds = authenticate_google_chat('GCP_TOKEN_TARGET')
     
     for source, target in SPACE_PAIRS:
         print(f"--- מתחיל סנכרון: {source} >>> {target} ---")
-        sync_new_messages(chat_service, creds, source, target)
+        sync_new_messages(source_service, source_creds, target_service, target_creds, source, target)
