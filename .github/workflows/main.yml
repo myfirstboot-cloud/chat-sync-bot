@@ -32,7 +32,8 @@ jobs:
 
       - name: Run Sync Script
         env:
-          GCP_TOKEN: ${{ secrets.GCP_TOKEN }}
+          GCP_TOKEN_SOURCE: ${{ secrets.GCP_TOKEN_SOURCE }}
+          GCP_TOKEN_TARGET: ${{ secrets.GCP_TOKEN_TARGET }}
         run: |
           git pull origin main 
           python main.py
