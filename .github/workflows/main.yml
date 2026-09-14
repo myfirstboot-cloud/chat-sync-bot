@@ -1,0 +1,48 @@
+name: Run Chat Copier Sync
+
+on:
+  workflow_dispatch: # מאפשר הרצה ידנית או דרך API/Cron חיצוני
+
+concurrency:
+  group: chat-copier-sync
+  cancel-in-progress: false # ריצות חדשות ימתינו בתור ולא ידרסו ריצה פעילה
+
+jobs:
+  sync-messages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # זמן מוארך ל-30 דקות למקרה של עומס רב
+    permissions:
+      contents: write 
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main 
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests
+
+      - name: Run Sync Script
+        env:
+          GCP_TOKEN: ${{ secrets.GCP_TOKEN }}
+        run: |
+          git pull origin main 
+          python main.py
+
+      - name: Save Memory File (Commit)
+        if: always() # <- פקודת ההצלה! מבטיחה שהקובץ יישמר גם אם הריצה מבוטלת
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add sync_data*.json
+          git commit -m "Update state and thread mapping" || true
+          git pull --rebase origin main || true
+          git push
