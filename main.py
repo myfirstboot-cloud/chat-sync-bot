@@ -341,7 +341,10 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
 
 if __name__ == '__main__':
     SPACE_PAIRS = [
-        ('spaces/מזהה_המקור', 'spaces/מזהה_היעד') # אל תשכח לשנות למזהים שלך
+        ('spaces/AAQAmNPrFYc', 'spaces/AAQASEaw_j8'),
+        ('spaces/AAQArWIpnWI', 'spaces/AAQAQ4_7xeo'),
+        ('spaces/AAQApiJLCjU', 'spaces/AAQAVv3TtXw'),
+        ('spaces/AAQAlbfMdPw', 'spaces/AAQAhvo3RqQ')
     ]
     
     # אימות כפול
