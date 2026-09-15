@@ -1,7 +1,11 @@
 {
-  "last_msg_id": "spaces/AAQAlbfMdPw/messages/70l-zTHITkY.gXg0Wbpq9ow",
-  "threads": {},
+  "last_msg_id": "spaces/AAQAlbfMdPw/messages/70l-zTHITkY.1VPv7lo4778",
+  "threads": {
+    "spaces/AAQAlbfMdPw/threads/hQzxymH8C5g": "spaces/AAQAhvo3RqQ/threads/05vOzYS-Qyw"
+  },
   "processed_ids": [
-    "spaces/AAQAlbfMdPw/messages/70l-zTHITkY.gXg0Wbpq9ow"
+    "spaces/AAQAlbfMdPw/messages/70l-zTHITkY.gXg0Wbpq9ow",
+    "spaces/AAQAlbfMdPw/messages/hQzxymH8C5g.hQzxymH8C5g",
+    "spaces/AAQAlbfMdPw/messages/70l-zTHITkY.1VPv7lo4778"
   ]
 }
