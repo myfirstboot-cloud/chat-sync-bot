@@ -21,10 +21,18 @@ def authenticate_google_chat(env_var_name):
     return service, creds
 
 def download_attachment(attachment, service, creds):
+    # אם זה קובץ דרייב, לא מנסים להוריד אותו (הלוגיקה הראשית כבר תעשה מזה קישור)
+    if 'driveDataRef' in attachment:
+        return None, None
+
     attachment_ref = attachment.get('attachmentDataRef', {})
     download_uri = attachment_ref.get('downloadUri')
     resource_name = attachment_ref.get('resourceName')
     
+    # אם אין נתוני הורדה בכלל (למשל תצוגה מקדימה של קישור או קובץ חסום)
+    if not resource_name and not download_uri:
+        return None, None
+        
     headers = {'Authorization': f'Bearer {creds.token}'}
     
     if resource_name:
@@ -59,9 +67,8 @@ def download_attachment(attachment, service, creds):
                 print(f" > שגיאת תקשורת מקישור: {e}")
                 time.sleep(5)
             
-    print(" > שגיאה: לא ניתן היה להוריד את הקובץ המצורף.")
+    print(" > שגיאה: לא ניתן היה להוריד את הקובץ המצורף (ייתכן שפג תוקפו או שהוא מוגן).")
     return None, None
-
 def get_new_messages(service, space_name, last_msg_id=None):
     messages = []
     page_token = None
