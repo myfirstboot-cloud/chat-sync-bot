@@ -62,24 +62,43 @@ def download_attachment(attachment, service, creds):
     print(" > שגיאה: לא ניתן היה להוריד את הקובץ המצורף.")
     return None, None
 
-def get_all_messages(service, space_name):
+def get_new_messages(service, space_name, last_msg_id=None):
     messages = []
     page_token = None
     try:
         while True:
+            # משיכת ההודעות מהחדשה לישנה (סדר הפוך)
             results = service.spaces().messages().list(
                 parent=space_name, 
-                pageSize=1000,
+                pageSize=1000 if last_msg_id else 1, # בריצת אתחול מספיק למשוך הודעה 1
+                orderBy="create_time desc",
                 pageToken=page_token
             ).execute()
             
-            if 'messages' in results:
-                messages.extend(results['messages'])
-            
-            page_token = results.get('nextPageToken')
-            if not page_token:
+            page_messages = results.get('messages', [])
+            if not page_messages:
                 break
                 
+            found_last = False
+            for msg in page_messages:
+                if msg['name'] == last_msg_id:
+                    found_last = True
+                    break
+                messages.append(msg)
+                
+            if found_last or not last_msg_id:
+                break
+                
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                # אם סרקנו הכל ולא מצאנו את ההודעה האחרונה (אולי נמחקה), נקח כגיבוי את ה-50 האחרונות
+                if last_msg_id and not found_last:
+                    print(" > ההודעה האחרונה מהזיכרון לא נמצאה. מושך את ה-50 החדשות כגיבוי.")
+                    messages = messages[:50]
+                break
+                
+        # הופכים חזרה כדי שההעתקה ליעד תהיה בסדר הנכון (מהישן לחדש)
+        messages.reverse()
         return messages
     except Exception as e:
         print(f"שגיאה במשיכת הודעות: {e}")
@@ -113,35 +132,20 @@ def save_state(state, target_space):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 def sync_new_messages(source_service, source_creds, target_service, target_creds, source_space, target_space):
-    messages = get_all_messages(source_service, source_space)
-    
-    if not messages:
-        print(f"לא נמצאו הודעות במרחב המקור {source_space}.")
-        return
-
     state = load_state(target_space)
     last_id = state.get("last_msg_id")
 
-    if not last_id:
-        state["last_msg_id"] = messages[-1]['name']
-        save_state(state, target_space)
-        print("ריצת אתחול: נשמר המזהה האחרון. ההעתקה תתחיל בפועל מהריצה הבאה.")
-        return
-
-    index = -1
-    for i, msg in enumerate(messages):
-        if msg['name'] == last_id:
-            index = i
-            break
-
-    new_messages = []
-    if index != -1:
-        new_messages = messages[index + 1:]
-    else:
-        new_messages = messages[-50:] 
-
+    # משתמשים בפונקציה החדשה והמהירה
+    new_messages = get_new_messages(source_service, source_space, last_id)
+    
     if not new_messages:
         print("אין הודעות חדשות להעתקה הפעם.")
+        return
+
+    if not last_id:
+        state["last_msg_id"] = new_messages[-1]['name']
+        save_state(state, target_space)
+        print("ריצת אתחול: נשמר המזהה האחרון. ההעתקה תתחיל בפועל מהריצה הבאה.")
         return
 
     print(f"נמצאו {len(new_messages)} הודעות חדשות. מתחיל העתקה...")
@@ -253,6 +257,7 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                 
                 created_message = target_service.spaces().messages().create(**api_kwargs).execute()
                 print(" > הודעת טקסט הועתקה בהצלחה.")
+                time.sleep(0.5)
             else:
                 for i, attachment_info in enumerate(attachments):
                     file_stream, mime_type = download_attachment(attachment_info, source_service, source_creds)
@@ -304,12 +309,14 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                             try:
                                 msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
                                 print(f" > קובץ ({file_name}) טופל בהצלחה.")
+                                time.sleep(0.5)
                             except Exception as e:
                                 print(f" > שגיאה בשליחת ההודעה: {e}")
                         else:
                             current_body['text'] += f"\n*[מערכת: קובץ ({file_name}) לא צורף. סיבה: {last_error_msg}]*"
                             try:
                                 msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
+                                time.sleep(0.5)
                             except Exception as e:
                                 print(f" > שגיאה בשליחת הודעת השגיאה: {e}")
                     else:
@@ -317,6 +324,7 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                             current_body['text'] += "\n*[מערכת: צורף קובץ או תמונה שלא ניתן היה להוריד ממרחב המקור]*"
                         try:
                             msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
+                            time.sleep(0.5)
                         except Exception as e:
                             print(f" > שגיאה בשליחת הודעת שגיאת הורדה: {e}")
                         
