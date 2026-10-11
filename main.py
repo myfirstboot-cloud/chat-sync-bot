@@ -357,6 +357,7 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
 
 if __name__ == '__main__':
     SPACE_PAIRS = [
+        ('spaces/AAQAowaINhE', 'spaces/AAQA5Ow00IQ'),
         ('spaces/AAQAmNPrFYc', 'spaces/AAQASEaw_j8'),
         ('spaces/AAQAERFjXls', 'spaces/AAQAn6Ktl5M'),
         ('spaces/AAQArWIpnWI', 'spaces/AAQAQ4_7xeo'),
