@@ -359,7 +359,6 @@ if __name__ == '__main__':
     SPACE_PAIRS = [
         ('spaces/AAQAowaINhE', 'spaces/AAQA5Ow00IQ'),
         ('spaces/AAQAmNPrFYc', 'spaces/AAQASEaw_j8'),
-        ('spaces/AAQAERFjXls', 'spaces/AAQAn6Ktl5M'),
         ('spaces/AAQArWIpnWI', 'spaces/AAQAQ4_7xeo'),
         ('spaces/AAQApiJLCjU', 'spaces/AAQAVv3TtXw'),
         ('spaces/AAQAlbfMdPw', 'spaces/AAQAhvo3RqQ')
