@@ -1,5 +1,13 @@
 {
-  "last_msg_id": "spaces/AAQAowaINhE/messages/XClRhU7Kfc8.XClRhU7Kfc8",
-  "threads": {},
-  "processed_ids": []
+  "last_msg_id": "spaces/AAQAowaINhE/messages/GHd_TFKzb0k.GHd_TFKzb0k",
+  "threads": {
+    "spaces/AAQAowaINhE/threads/_u2wDfAsi5w": "spaces/AAQA5Ow00IQ/threads/Tk4y48OL9Js",
+    "spaces/AAQAowaINhE/threads/BeG2EC0Tir8": "spaces/AAQA5Ow00IQ/threads/MmM2gMaUw3o",
+    "spaces/AAQAowaINhE/threads/GHd_TFKzb0k": "spaces/AAQA5Ow00IQ/threads/H57voxVEPEY"
+  },
+  "processed_ids": [
+    "spaces/AAQAowaINhE/messages/_u2wDfAsi5w._u2wDfAsi5w",
+    "spaces/AAQAowaINhE/messages/BeG2EC0Tir8.BeG2EC0Tir8",
+    "spaces/AAQAowaINhE/messages/GHd_TFKzb0k.GHd_TFKzb0k"
+  ]
 }
