@@ -69,6 +69,7 @@ def download_attachment(attachment, service, creds):
             
     print(" > שגיאה: לא ניתן היה להוריד את הקובץ המצורף (ייתכן שפג תוקפו או שהוא מוגן).")
     return None, None
+
 def get_new_messages(service, space_name, last_msg_id=None):
     messages = []
     page_token = None
@@ -119,13 +120,23 @@ def get_state_file(target_space):
 
 def load_state(target_space):
     state_file = get_state_file(target_space)
-    if os.path.exists(state_file):
+    default_state = {"last_msg_id": None, "threads": {}, "processed_ids": []}
+    
+    if os.path.exists(state_file) and os.path.getsize(state_file) > 0:
         with open(state_file, 'r', encoding='utf-8') as f:
-            state = json.load(f)
-            if "processed_ids" not in state: 
-                state["processed_ids"] = []
-            return state
-    return {"last_msg_id": None, "threads": {}, "processed_ids": []}
+            try:
+                state = json.load(f)
+                if not isinstance(state, dict):
+                    return default_state
+                if "threads" not in state:
+                    state["threads"] = {}
+                if "processed_ids" not in state: 
+                    state["processed_ids"] = []
+                return state
+            except json.JSONDecodeError:
+                print(f" > אזהרה: הקובץ {state_file} ריק או פגום. מאתחל קובץ זיכרון מחדש.")
+                return default_state
+    return default_state
 
 def save_state(state, target_space):
     state_file = get_state_file(target_space)
@@ -229,8 +240,8 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                             dynamic_known_users[raw_name] = sender_name
                         except Exception as e:
                             sender_name = f"מזהה: {raw_name.split('/')[-1]}"
-            else:
-                sender_name = 'משתמש לא ידוע'
+                else:
+                    sender_name = 'משתמש לא ידוע'
 
             attachments = original_msg.get('attachment', [])
             
@@ -282,6 +293,7 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                     if 'thread' in current_body:
                         api_kwargs['messageReplyOption'] = 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD'
                     
+                    msg_res = None
                     if file_stream:
                         file_name = attachment_info.get('contentName', 'attachment_file')
                         upload_res = None
@@ -370,4 +382,7 @@ if __name__ == '__main__':
     
     for source, target in SPACE_PAIRS:
         print(f"--- מתחיל סנכרון: {source} >>> {target} ---")
-        sync_new_messages(source_service, source_creds, target_service, target_creds, source, target)
+        try:
+            sync_new_messages(source_service, source_creds, target_service, target_creds, source, target)
+        except Exception as e:
+            print(f"שגיאה כללית בסנכרון {source} >>> {target}: {e}\n")
