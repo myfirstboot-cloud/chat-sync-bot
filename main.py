@@ -20,8 +20,22 @@ def authenticate_google_chat(env_var_name):
     service = build('chat', 'v1', credentials=creds)
     return service, creds
 
+def create_message_with_retry(target_service, api_kwargs):
+    """שולח הודעה עם מנגנון המתנה אוטומטי במקרה של שגיאת עומס 429 מגוגל"""
+    for attempt in range(5):
+        try:
+            res = target_service.spaces().messages().create(**api_kwargs).execute()
+            time.sleep(1.2)  # מרווח בטוח למניעת חסימת מכסה
+            return res
+        except Exception as e:
+            if '429' in str(e) and attempt < 4:
+                wait_time = 10 * (2 ** attempt)
+                print(f" > עומס בשליחת הודעה (429). ממתין {wait_time} שניות ומנסה שוב (ניסיון {attempt + 1}/5)...")
+                time.sleep(wait_time)
+            else:
+                raise e
+
 def download_attachment(attachment, service, creds):
-    # אם זה קובץ דרייב, לא מנסים להוריד אותו (הלוגיקה הראשית כבר תעשה מזה קישור)
     if 'driveDataRef' in attachment:
         return None, None
 
@@ -29,7 +43,6 @@ def download_attachment(attachment, service, creds):
     download_uri = attachment_ref.get('downloadUri')
     resource_name = attachment_ref.get('resourceName')
     
-    # אם אין נתוני הורדה בכלל (למשל תצוגה מקדימה של קישור או קובץ חסום)
     if not resource_name and not download_uri:
         return None, None
         
@@ -75,14 +88,25 @@ def get_new_messages(service, space_name, last_msg_id=None):
     page_token = None
     try:
         while True:
-            # משיכת ההודעות מהחדשה לישנה (סדר הפוך)
-            results = service.spaces().messages().list(
-                parent=space_name, 
-                pageSize=1000 if last_msg_id else 1, # בריצת אתחול מספיק למשוך הודעה 1
-                orderBy="create_time desc",
-                pageToken=page_token
-            ).execute()
-            
+            results = None
+            # מנגנון ניסיון חוזר למקרה של עומס (429) בזמן משיכת ההודעות
+            for attempt in range(5):
+                try:
+                    results = service.spaces().messages().list(
+                        parent=space_name, 
+                        pageSize=1000 if last_msg_id else 1,
+                        orderBy="create_time desc",
+                        pageToken=page_token
+                    ).execute()
+                    break
+                except Exception as api_err:
+                    if '429' in str(api_err) and attempt < 4:
+                        wait_time = 10 * (2 ** attempt)
+                        print(f" > עומס במשיכת הודעות (429). ממתין {wait_time} שניות ומנסה שוב...")
+                        time.sleep(wait_time)
+                    else:
+                        raise api_err
+
             page_messages = results.get('messages', [])
             if not page_messages:
                 break
@@ -99,13 +123,11 @@ def get_new_messages(service, space_name, last_msg_id=None):
                 
             page_token = results.get('nextPageToken')
             if not page_token:
-                # אם סרקנו הכל ולא מצאנו את ההודעה האחרונה (אולי נמחקה), נקח כגיבוי את ה-50 האחרונות
                 if last_msg_id and not found_last:
                     print(" > ההודעה האחרונה מהזיכרון לא נמצאה. מושך את ה-50 החדשות כגיבוי.")
                     messages = messages[:50]
                 break
                 
-        # הופכים חזרה כדי שההעתקה ליעד תהיה בסדר הנכון (מהישן לחדש)
         messages.reverse()
         return messages
     except Exception as e:
@@ -153,7 +175,6 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
     state = load_state(target_space)
     last_id = state.get("last_msg_id")
 
-    # משתמשים בפונקציה החדשה והמהירה
     new_messages = get_new_messages(source_service, source_space, last_id)
     
     if not new_messages:
@@ -273,9 +294,8 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                 if 'thread' in msg_body:
                     api_kwargs['messageReplyOption'] = 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD'
                 
-                created_message = target_service.spaces().messages().create(**api_kwargs).execute()
+                created_message = create_message_with_retry(target_service, api_kwargs)
                 print(" > הודעת טקסט הועתקה בהצלחה.")
-                time.sleep(0.5)
             else:
                 for i, attachment_info in enumerate(attachments):
                     file_stream, mime_type = download_attachment(attachment_info, source_service, source_creds)
@@ -314,8 +334,8 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                             except Exception as e:
                                 last_error_msg = str(e)
                                 if '429' in str(e) and attempt < 4:
-                                    wait_time = 5 * (2 ** attempt)
-                                    print(f" > עומס כתיבה (429). ממתין {wait_time} שניות ומנסה שוב (ניסיון {attempt + 1}/5)...")
+                                    wait_time = 10 * (2 ** attempt)
+                                    print(f" > עומס כתיבה בהעלאה (429). ממתין {wait_time} שניות ומנסה שוב (ניסיון {attempt + 1}/5)...")
                                     time.sleep(wait_time)
                                 else:
                                     break
@@ -326,24 +346,21 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                                 current_body['attachment'] = [{'attachmentDataRef': attachment_data_ref}]
                             
                             try:
-                                msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
+                                msg_res = create_message_with_retry(target_service, api_kwargs)
                                 print(f" > קובץ ({file_name}) טופל בהצלחה.")
-                                time.sleep(0.5)
                             except Exception as e:
                                 print(f" > שגיאה בשליחת ההודעה: {e}")
                         else:
                             current_body['text'] += f"\n*[מערכת: קובץ ({file_name}) לא צורף. סיבה: {last_error_msg}]*"
                             try:
-                                msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
-                                time.sleep(0.5)
+                                msg_res = create_message_with_retry(target_service, api_kwargs)
                             except Exception as e:
                                 print(f" > שגיאה בשליחת הודעת השגיאה: {e}")
                     else:
                         if not drive_id:
                             current_body['text'] += "\n*[מערכת: צורף קובץ או תמונה שלא ניתן היה להוריד ממרחב המקור]*"
                         try:
-                            msg_res = target_service.spaces().messages().create(**api_kwargs).execute()
-                            time.sleep(0.5)
+                            msg_res = create_message_with_retry(target_service, api_kwargs)
                         except Exception as e:
                             print(f" > שגיאה בשליחת הודעת שגיאת הורדה: {e}")
                         
@@ -363,6 +380,7 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
                     
         except Exception as e:
             print(f"אירעה שגיאה בהעתקת הודעה {original_msg.get('name')}: {e}")
+            time.sleep(5)
             continue
 
     print(f"הסנכרון מ-{source_space} הסתיים בהצלחה.\n")
@@ -376,7 +394,6 @@ if __name__ == '__main__':
         ('spaces/AAQAlbfMdPw', 'spaces/AAQAhvo3RqQ')
     ]
     
-    # אימות כפול
     source_service, source_creds = authenticate_google_chat('GCP_TOKEN_SOURCE')
     target_service, target_creds = authenticate_google_chat('GCP_TOKEN_TARGET')
     
