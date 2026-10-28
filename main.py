@@ -187,7 +187,14 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
         print("ריצת אתחול: נשמר המזהה האחרון. ההעתקה תתחיל בפועל מהריצה הבאה.")
         return
 
-    print(f"נמצאו {len(new_messages)} הודעות חדשות. מתחיל העתקה...")
+    # מנגנון הגבלה למניעת עומס על השרת
+    MAX_MESSAGES_PER_RUN = 40
+    if len(new_messages) > MAX_MESSAGES_PER_RUN:
+        print(f"נמצאו {len(new_messages)} הודעות חדשות. מגביל ל-{MAX_MESSAGES_PER_RUN} כדי למנוע עומס (השאר יועתקו בריצות הבאות)...")
+        new_messages = new_messages[:MAX_MESSAGES_PER_RUN]
+    else:
+        print(f"נמצאו {len(new_messages)} הודעות חדשות. מתחיל העתקה...")
+
     dynamic_known_users = {}
 
     for original_msg in new_messages:
