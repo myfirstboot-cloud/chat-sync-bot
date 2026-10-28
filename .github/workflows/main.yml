@@ -2,8 +2,8 @@ name: Run Chat Copier Sync
 
 on:
   workflow_dispatch: 
-  schedule:
-    - cron: '*/30 * * * *' # מריץ את הקוד אוטומטית כל 30 דקות כדי לשמור על מכסת החינם
+  # schedule:
+  #   - cron: '*/30 * * * *'
 
 concurrency:
   group: chat-copier-sync
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   sync-messages:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 
+    timeout-minutes: 90 
     permissions:
       contents: write 
       
