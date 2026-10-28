@@ -188,7 +188,7 @@ def sync_new_messages(source_service, source_creds, target_service, target_creds
         return
 
     # מנגנון הגבלה למניעת עומס על השרת
-    MAX_MESSAGES_PER_RUN = 40
+    MAX_MESSAGES_PER_RUN = 150
     if len(new_messages) > MAX_MESSAGES_PER_RUN:
         print(f"נמצאו {len(new_messages)} הודעות חדשות. מגביל ל-{MAX_MESSAGES_PER_RUN} כדי למנוע עומס (השאר יועתקו בריצות הבאות)...")
         new_messages = new_messages[:MAX_MESSAGES_PER_RUN]
